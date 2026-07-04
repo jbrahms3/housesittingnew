@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 2: Full E2E re-test of flipped-role HomeNest (sitter sends form → client fills). Backend: rewrote backend_test.py for new FormCreateIn={title,client_name,client_email}, new POST /api/public/forms/{share_token}/submit, status lifecycle, 503 email path, auth guards — 26/26 PASS. Frontend: landing copy, auth guard, register→dashboard, NewForm create (pending), SitterFormView pending banner + share link + copy + prefilled client email + send-email 503 toast, PublicForm intro + 6-step wizard (calendar date picking, stay, pets, feeding+walks, tasks, contacts) + submit, dashboard Completed group, sitter completed banner/print, public revisit read-only CarePlanView — all working.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/logout", "issue": "Not auth-protected; always returns 200. Same as iteration 1 — unchanged."},
+      {"endpoint": "POST /api/forms", "issue": "client_email has no EmailStr validation (accepts any free-form string, then .lower() on it). Minor — invalid emails can be stored (e.g. 'notemail'). Consider EmailStr with Optional or a pydantic validator."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PublicForm FillableFlow", "issue": "Thank-you view (data-testid=thank-you-view) never renders after submit because parent PublicForm rechecks form.status after onSubmitted() → instantly swaps to the completed CarePlanView. Spec says Submit → thank-you view. Functionally fine (read-only plan is shown) but the celebratory screen is skipped.", "selector": "[data-testid=\"thank-you-view\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional/low) Fix PublicForm so the in-wizard 'Thank you!' view is shown after submit (e.g. branch on a local submitted state before the form.status completed check, or render the thank-you inline when onSubmitted is triggered). Currently user sees CarePlanView immediately.",
+    "(Optional) Add EmailStr validation or pydantic validator for FormCreateIn.client_email and FormMetaUpdateIn.client_email to prevent malformed emails from being persisted."
+  ],
+  "critical_code_review_comments": [
+    "server.py line 412: public_form projection correctly excludes user_id and sitter_email — matches spec.",
+    "server.py line 418-436: submit_public_form correctly rejects already-completed forms with 400 and strips user_id/sitter_email from returned payload.",
+    "server.py line 349-369: create_form stores empty submission defaults — clean shape. Share token uses secrets.token_urlsafe(16) → ~22 char URL-safe token, good.",
+    "PublicForm.jsx lines 40-62: form.status===completed branch returns CarePlanView before FillableFlow — causes thank-you-view bypass (see ui_bugs).",
+    "Admin seed (lines 534-549) correctly re-hashes admin password if changed in env — good idempotent behaviour.",
+    "CORS allow_origins explicit (FRONTEND_URL + localhost) with credentials — correct; cookies use samesite=none + secure=true for cross-origin preview domain.",
+    "JWT secret read from env; bcrypt $2b$ hash format verified via successful login cycle.",
+    "FormSteps.jsx is 670+ lines — suggest splitting per-step components into separate files once further steps/logic are added (maintainability).",
+    "SitterFormView.jsx send-email form: uses RESEND_API_KEY 503 detail verbatim as toast — good, tested visually."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {"backend": "100% (26/26)", "frontend": "~95% (one low-priority UX miss: thank-you-view skipped)"},
+  "test_credentials": "Seeded admin admin@housesit.app/admin123 verified. New sitters registered dynamically with TEST_sitter_{uuid}@example.com / TestPass123!.",
+  "seed_data_creation": "Several TEST_-prefixed users/forms created for this run and left in DB (each run uses a unique uuid suffix so no collision).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest at /app/backend/tests/backend_test.py fully covers new flipped schema (26 tests). FormCreateIn={title, client_name, client_email}; submit via POST /api/public/forms/{share_token}/submit (no auth). RESEND_API_KEY intentionally empty → send-email returns 503 (verified twice). Google OAuth requires real Emergent session_id (expect 401/502 for fakes). Step 1 of public wizard requires at least one date selected in DayPicker calendar (Next is disabled until fill.date_start is set). Step 3 requires pet names when pets present.",
+  "rca_of_the_issue": "Thank-you-view bypass RCA: In PublicForm.jsx, the parent component branches on `form.status === 'completed'` BEFORE rendering FillableFlow. In FillableFlow.submit(), onSubmitted(updatedForm) is called which propagates the newly-completed form back up, causing an immediate re-render that replaces FillableFlow with the read-only CarePlanView. The local `submitted` state inside FillableFlow never gets a chance to render the thank-you view. Mitigation: either (a) keep the thank-you view at the parent level gated by a separate `justSubmitted` state, or (b) delay calling onSubmitted until after a brief timeout (not recommended), or (c) render the CarePlanView branch only when !justSubmitted. Best fix is (a)."
+}
