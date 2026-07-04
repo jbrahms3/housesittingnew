@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import {
   Home, ArrowLeft, ArrowRight, CheckCircle2, Send, Heart, Printer, ClipboardCheck,
   User, MapPin, Phone, Languages, Award, BadgeCheck, Briefcase, ShieldCheck, Receipt,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, formatApiErrorDetail } from "../lib/api";
@@ -11,6 +12,7 @@ import PriceBadge from "../components/PriceBadge";
 import { calculateTotal, formatMoney, hasAnyPricing } from "../lib/pricing";
 import {
   emptySubmission, ProgressBar, StepDates, StepStay, StepPets, StepCare, StepTasks, StepContacts,
+  StepHeader, Card, SectionHeader, EmergencyContactsEditor,
 } from "../components/FormSteps";
 
 export default function PublicForm() {
@@ -50,6 +52,12 @@ export default function PublicForm() {
         </div>
       </div>
     );
+  }
+
+  // Stage 2: sitter has confirmed but the client hasn't yet added the exact
+  // address + emergency contacts. Let them fill those in.
+  if (form.status === "completed" && form.sitter_confirmed && !form.details_completed) {
+    return <DetailsFlow shareToken={shareToken} form={form} />;
   }
 
   if (form.status === "completed") {
@@ -92,6 +100,109 @@ function PublicHeader({ printable }) {
   );
 }
 
+function DetailsFlow({ shareToken, form: initialForm }) {
+  const [address, setAddress] = useState(initialForm.home_address || "");
+  const [contacts, setContacts] = useState(
+    (initialForm.emergency_contacts && initialForm.emergency_contacts.length > 0)
+      ? initialForm.emergency_contacts
+      : [{ name: "", phone: "", relation: "" }]
+  );
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  const sitterName = initialForm.sitter_name || initialForm.sitter_profile?.name || "Your sitter";
+  const hasEmergency = contacts.some((c) => c.name?.trim() && c.phone?.trim());
+  const canSubmit = !!address.trim() && hasEmergency && !submitting;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    try {
+      await api.post(`/public/forms/${shareToken}/details`, {
+        home_address: address,
+        emergency_contacts: contacts,
+      });
+      toast.success("Thank you! Your sitter now has everything.");
+      setSubmitted(true);
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Could not submit");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (submitted) {
+    return (
+      <div className="min-h-screen bg-[#FAF9F6]">
+        <PublicHeader />
+        <main className="max-w-xl mx-auto px-4 sm:px-8 py-20 text-center fade-up" data-testid="details-thank-you-view">
+          <div className="w-20 h-20 rounded-full bg-[#8A9A7A] flex items-center justify-center mx-auto mb-6 shadow-lg">
+            <CheckCircle2 className="w-10 h-10 text-white" />
+          </div>
+          <h1 className="font-heading text-4xl sm:text-5xl tracking-tight text-[#3E3A37] mb-4">All set!</h1>
+          <p className="text-[#76706A] text-lg max-w-md mx-auto mb-8">
+            {sitterName} now has your address and emergency contacts. Enjoy your trip!
+          </p>
+          <div className="inline-flex items-center gap-2 text-[#C58B71]">
+            <Heart className="w-5 h-5" /> <span className="font-heading font-semibold">Thank you!</span>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#FAF9F6] pb-28 grain-bg" data-testid="details-flow">
+      <PublicHeader />
+      <main className="max-w-3xl mx-auto px-4 sm:px-8 pt-10 md:pt-16 fade-up">
+        <StepHeader
+          eyebrow="Almost done"
+          title={`${sitterName} confirmed 🎉`}
+          subtitle="Now that your dates are locked in, please share the exact address and an emergency contact so your sitter is fully prepared."
+        />
+        <Card testid="details-card">
+          <SectionHeader icon={MapPin} title="Home address" />
+          <div className="mb-8">
+            <label className="block">
+              <span className="block text-sm font-semibold text-[#3E3A37] mb-2">Full street address *</span>
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="123 Main St, Brooklyn, NY 11201"
+                className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:outline-none focus:ring-4 ${
+                  !address.trim()
+                    ? "border-[#C58B71]/60 focus:border-[#C58B71] focus:ring-[#C58B71]/15"
+                    : "border-[#E8E4DF] focus:border-[#8A9A7A] focus:ring-[#8A9A7A]/10"
+                }`}
+                aria-invalid={!address.trim() || undefined}
+                data-testid="details-home-address"
+              />
+              <span className="block text-xs text-[#A39E98] mt-1.5">Where your sitter will be staying — street, city, state, ZIP.</span>
+            </label>
+          </div>
+
+          <SectionHeader icon={AlertTriangle} title="Emergency contacts *" />
+          <EmergencyContactsEditor contacts={contacts} update={setContacts} />
+        </Card>
+      </main>
+
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-[#E8E4DF] py-4 z-40">
+        <div className="max-w-3xl mx-auto px-4 sm:px-8 flex items-center justify-end gap-4">
+          <button
+            onClick={submit}
+            disabled={!canSubmit}
+            className="pill-btn bg-[#C58B71] text-white hover:bg-[#B37A60] px-8 py-3 shadow-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            data-testid="details-submit-button"
+          >
+            <Send className="w-4 h-4 mr-2" /> {submitting ? "Saving…" : "Send to my sitter"}
+          </button>
+        </div>
+      </nav>
+    </div>
+  );
+}
+
 function FillableFlow({ shareToken, form: initialForm }) {
   const storageKey = `homenest:fill:${shareToken}`;
 
@@ -128,13 +239,10 @@ function FillableFlow({ shareToken, form: initialForm }) {
   const update = (patch) => setFill((prev) => ({ ...prev, ...patch }));
 
   const canNext = () => {
-    if (step === 1) return !!fill.date_start && !!fill.home_address?.trim();
+    if (step === 1) return !!fill.date_start && !!fill.zip_code?.trim();
     if (step === 3) return fill.pets.every((p) => p.name?.trim());
     if (step === 6) {
       const hasOwner = !!fill.owner_name?.trim() && !!fill.owner_phone?.trim();
-      const hasEmergency = (fill.emergency_contacts || []).some(
-        (c) => c.name?.trim() && c.phone?.trim()
-      );
       const hasWaterShutoff = !!fill.water_shutoff?.trim();
       let hasVet = true;
       if ((fill.pets || []).length > 0) {
@@ -144,7 +252,7 @@ function FillableFlow({ shareToken, form: initialForm }) {
           hasVet = fill.pets.every((p) => p.vet?.name?.trim() && p.vet?.phone?.trim());
         }
       }
-      return hasOwner && hasEmergency && hasWaterShutoff && hasVet;
+      return hasOwner && hasWaterShutoff && hasVet;
     }
     return true;
   };

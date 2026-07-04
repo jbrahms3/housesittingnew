@@ -34,6 +34,7 @@ export function emptySubmission() {
     date_start: null,
     date_end: null,
     selected_dates: [],
+    zip_code: "",
     home_address: "",
     stay_required: true,
     bed_provided: true,
@@ -227,21 +228,22 @@ export function StepDates({ form, update, sitterBookedDates = [] }) {
 
           <div className="w-full mt-8 pt-6 border-t border-[#F4F3ED]">
             <label className="block">
-              <span className="block text-sm font-semibold text-[#3E3A37] mb-2">Home address *</span>
+              <span className="block text-sm font-semibold text-[#3E3A37] mb-2">ZIP code *</span>
               <input
                 type="text"
-                value={form.home_address || ""}
-                onChange={(e) => update({ home_address: e.target.value })}
-                placeholder="123 Main St, Brooklyn, NY 11201"
+                inputMode="numeric"
+                value={form.zip_code || ""}
+                onChange={(e) => update({ zip_code: e.target.value })}
+                placeholder="11201"
                 className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:outline-none focus:ring-4 ${
-                  !form.home_address?.trim()
+                  !form.zip_code?.trim()
                     ? "border-[#C58B71]/60 focus:border-[#C58B71] focus:ring-[#C58B71]/15"
                     : "border-[#E8E4DF] focus:border-[#8A9A7A] focus:ring-[#8A9A7A]/10"
                 }`}
-                aria-invalid={!form.home_address?.trim() || undefined}
-                data-testid="home-address"
+                aria-invalid={!form.zip_code?.trim() || undefined}
+                data-testid="zip-code"
               />
-              <span className="block text-xs text-[#A39E98] mt-1.5">Where your sitter will be staying — street, city, zip.</span>
+              <span className="block text-xs text-[#A39E98] mt-1.5">Just your ZIP for now — you'll share the exact address once your sitter confirms.</span>
             </label>
           </div>
         </div>
@@ -703,19 +705,56 @@ export function StepTasks({ form, update, pricing }) {
   );
 }
 
+// ============ Emergency contacts (stage 2) ============
+export function EmergencyContactsEditor({ contacts, update }) {
+  const list = contacts || [];
+  const addEmergency = () => update([...list, { name: "", phone: "", relation: "" }]);
+  const setEmergency = (idx, patch) => {
+    const next = [...list];
+    next[idx] = { ...next[idx], ...patch };
+    update(next);
+  };
+  const removeEmergency = (idx) => update(list.filter((_, i) => i !== idx));
+  const hasEmergency = list.some((c) => c.name?.trim() && c.phone?.trim());
+
+  return (
+    <>
+      {!hasEmergency && (
+        <p className="text-sm text-[#C58B71] -mt-3 mb-3 flex items-center gap-1.5" data-testid="emergency-required-hint">
+          <AlertTriangle className="w-3.5 h-3.5" /> Please add at least one emergency contact with a name and phone number.
+        </p>
+      )}
+      <div className="space-y-3 mb-3">
+        {list.map((c, i) => (
+          <div key={i} className="bg-[#FAF9F6] border border-[#E8E4DF] rounded-2xl p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <Field label="Name *" value={c.name} onChange={(v) => setEmergency(i, { name: v })} testid={`emergency-name-${i}`} required invalid={!c.name?.trim()} />
+              <Field label="Phone *" value={c.phone} onChange={(v) => setEmergency(i, { phone: v })} testid={`emergency-phone-${i}`} required invalid={!c.phone?.trim()} />
+              <Field label="Relation" value={c.relation} onChange={(v) => setEmergency(i, { relation: v })} testid={`emergency-relation-${i}`} placeholder="vet, neighbor…" />
+            </div>
+            <button type="button" onClick={() => removeEmergency(i)} className="mt-2 text-sm text-[#C58B71] font-semibold hover:underline" data-testid={`remove-emergency-${i}`}>
+              Remove contact
+            </button>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={addEmergency}
+        className="pill-btn border-2 border-dashed border-[#E8E4DF] text-[#76706A] hover:border-[#8A9A7A] hover:text-[#3E3A37] px-6 py-3"
+        data-testid="add-emergency-contact"
+      >
+        <Plus className="w-4 h-4 mr-2" /> Add emergency contact
+      </button>
+    </>
+  );
+}
+
 // ============ Step 6: Contacts ============
 export function StepContacts({ form, update, pricing }) {
   const wifiDiscount = pricing?.wifi_discount_enabled && Number(pricing?.wifi_discount_amount) > 0;
   const ownerNameMissing = !form.owner_name?.trim();
   const ownerPhoneMissing = !form.owner_phone?.trim();
-  const hasEmergency = (form.emergency_contacts || []).some((c) => c.name?.trim() && c.phone?.trim());
-  const addEmergency = () => update({ emergency_contacts: [...form.emergency_contacts, { name: "", phone: "", relation: "" }] });
-  const setEmergency = (idx, patch) => {
-    const next = [...form.emergency_contacts];
-    next[idx] = { ...next[idx], ...patch };
-    update({ emergency_contacts: next });
-  };
-  const removeEmergency = (idx) => update({ emergency_contacts: form.emergency_contacts.filter((_, i) => i !== idx) });
   const setPet = (id, patch) => update({ pets: form.pets.map((p) => (p.pet_id === id ? { ...p, ...patch } : p)) });
 
   return (
@@ -723,42 +762,13 @@ export function StepContacts({ form, update, pricing }) {
       <StepHeader eyebrow="Step 6 of 6" title="Contacts & house notes" subtitle="So your sitter can reach you — and knows where to look if something goes wrong." />
       <Card testid="step-6-card">
         <SectionHeader icon={UserIcon} title="Your contact info" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
           <Field label="Your name *" value={form.owner_name} onChange={(v) => update({ owner_name: v })} testid="owner-name" required invalid={ownerNameMissing} />
           <Field label="Your phone *" value={form.owner_phone} onChange={(v) => update({ owner_phone: v })} testid="owner-phone" required invalid={ownerPhoneMissing} />
           <div className="sm:col-span-2">
             <Field label="Your email" type="email" value={form.owner_email} onChange={(v) => update({ owner_email: v })} testid="owner-email" />
           </div>
         </div>
-
-        <SectionHeader icon={AlertTriangle} title="Emergency contacts *" />
-        {!hasEmergency && (
-          <p className="text-sm text-[#C58B71] -mt-3 mb-3 flex items-center gap-1.5" data-testid="emergency-required-hint">
-            <AlertTriangle className="w-3.5 h-3.5" /> Please add at least one emergency contact with a name and phone number.
-          </p>
-        )}
-        <div className="space-y-3 mb-3">
-          {form.emergency_contacts.map((c, i) => (
-            <div key={i} className="bg-[#FAF9F6] border border-[#E8E4DF] rounded-2xl p-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <Field label="Name *" value={c.name} onChange={(v) => setEmergency(i, { name: v })} testid={`emergency-name-${i}`} required invalid={!c.name?.trim()} />
-                <Field label="Phone *" value={c.phone} onChange={(v) => setEmergency(i, { phone: v })} testid={`emergency-phone-${i}`} required invalid={!c.phone?.trim()} />
-                <Field label="Relation" value={c.relation} onChange={(v) => setEmergency(i, { relation: v })} testid={`emergency-relation-${i}`} placeholder="vet, neighbor…" />
-              </div>
-              <button type="button" onClick={() => removeEmergency(i)} className="mt-2 text-sm text-[#C58B71] font-semibold hover:underline" data-testid={`remove-emergency-${i}`}>
-                Remove contact
-              </button>
-            </div>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={addEmergency}
-          className="pill-btn border-2 border-dashed border-[#E8E4DF] text-[#76706A] hover:border-[#8A9A7A] hover:text-[#3E3A37] px-6 py-3 mb-8"
-          data-testid="add-emergency-contact"
-        >
-          <Plus className="w-4 h-4 mr-2" /> Add emergency contact
-        </button>
 
         {form.pets?.length > 0 && (
           <>

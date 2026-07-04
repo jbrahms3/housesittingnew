@@ -32,12 +32,17 @@ export default function CarePlanView({ form }) {
           <div className="text-lg text-[#3E3A37] font-semibold">
             <CalendarRange s={form.date_start} e={form.date_end} />
           </div>
-          {form.home_address && (
+          {form.home_address ? (
             <div className="mt-4 pt-4 border-t border-[#F4F3ED]">
               <SubLabel icon={MapPin}>Home address</SubLabel>
               <BodyText text={form.home_address} />
             </div>
-          )}
+          ) : form.zip_code ? (
+            <div className="mt-4 pt-4 border-t border-[#F4F3ED]">
+              <SubLabel icon={MapPin}>Area (ZIP)</SubLabel>
+              <BodyText text={form.zip_code} />
+            </div>
+          ) : null}
         </Section>
       )}
 

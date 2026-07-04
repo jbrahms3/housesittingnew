@@ -52,10 +52,13 @@ CREATE TABLE IF NOT EXISTS forms (
     wifi_shared BOOLEAN,
     guests_allowed BOOLEAN,
     sitter_confirmed BOOLEAN DEFAULT FALSE,
+    zip_code TEXT,
+    details_completed BOOLEAN DEFAULT FALSE,
     created_at TEXT,
     updated_at TEXT,
     completed_at TEXT,
     confirmed_at TEXT,
+    details_completed_at TEXT,
     selected_dates JSONB,
     pets JSONB,
     tasks JSONB,
@@ -64,6 +67,11 @@ CREATE TABLE IF NOT EXISTS forms (
 );
 
 CREATE INDEX IF NOT EXISTS forms_user_id_idx ON forms(user_id);
+
+-- Idempotent add for the two-stage intake columns (in case the table predates them).
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS zip_code TEXT;
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS details_completed BOOLEAN DEFAULT FALSE;
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS details_completed_at TEXT;
 """
 
 USER_COLUMNS = [
@@ -78,8 +86,9 @@ FORM_COLUMNS = [
     "home_address", "stay_notes", "owner_name", "owner_phone", "owner_email",
     "water_shutoff", "wifi_password", "guests_notes", "other_notes",
     "stay_required", "bed_provided", "same_vet_for_all", "wifi_shared",
-    "guests_allowed", "sitter_confirmed", "created_at", "updated_at",
-    "completed_at", "confirmed_at", "selected_dates", "pets", "tasks",
+    "guests_allowed", "sitter_confirmed", "zip_code", "details_completed",
+    "created_at", "updated_at", "completed_at", "confirmed_at",
+    "details_completed_at", "selected_dates", "pets", "tasks",
     "emergency_contacts", "vet_shared",
 ]
 

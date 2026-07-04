@@ -247,6 +247,22 @@ function CompletedBanner({ form, onConfirm }) {
   const completed = form.completed_at ? new Date(form.completed_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null;
   const confirmed = form.confirmed_at ? new Date(form.confirmed_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null;
 
+  if (form.sitter_confirmed && !form.details_completed) {
+    return (
+      <div className="bg-[#F0EBE1] border border-[#C58B71]/30 rounded-2xl p-4 mb-6 flex items-center gap-3" data-testid="awaiting-details-banner">
+        <div className="w-10 h-10 rounded-full bg-[#C58B71] flex items-center justify-center flex-shrink-0">
+          <Clock className="w-5 h-5 text-white" />
+        </div>
+        <div>
+          <div className="font-heading font-bold text-[#3E3A37]">Confirmed{confirmed ? ` on ${confirmed}` : ""} — waiting on final details</div>
+          <div className="text-sm text-[#76706A]">
+            {form.client_name || form.client_email} still needs to add their exact address & emergency contacts. They have a link to do this.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (form.sitter_confirmed) {
     return (
       <div className="bg-[#E8F0E1] border border-[#8A9A7A]/30 rounded-2xl p-4 mb-6 flex items-center gap-3" data-testid="confirmed-banner">

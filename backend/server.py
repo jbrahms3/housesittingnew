@@ -224,6 +224,7 @@ class FormSubmitIn(BaseModel):
     date_start: Optional[str] = None
     date_end: Optional[str] = None
     selected_dates: List[str] = []
+    zip_code: str = ""
     home_address: str = ""
     stay_required: bool = True
     bed_provided: bool = True
@@ -242,6 +243,13 @@ class FormSubmitIn(BaseModel):
     guests_allowed: bool = False
     guests_notes: str = ""
     other_notes: str = ""
+
+
+class FormDetailsIn(BaseModel):
+    """Stage-2 payload: the exact address + emergency contacts the client
+    provides only after the sitter has confirmed the appointment."""
+    home_address: str = ""
+    emergency_contacts: List[EmergencyContactIn] = []
 
 
 class SendEmailIn(BaseModel):
@@ -391,6 +399,7 @@ def _empty_submission() -> dict:
         "date_start": None,
         "date_end": None,
         "selected_dates": [],
+        "zip_code": "",
         "home_address": "",
         "stay_required": True,
         "bed_provided": True,
@@ -409,6 +418,8 @@ def _empty_submission() -> dict:
         "guests_allowed": False,
         "guests_notes": "",
         "other_notes": "",
+        "details_completed": False,
+        "details_completed_at": None,
     }
 
 
@@ -495,7 +506,34 @@ async def confirm_form(form_id: str, user: dict = Depends(get_current_user)):
         {"sitter_confirmed": True, "confirmed_at": now, "updated_at": now},
         user_id=user["user_id"],
     )
+
+    # Best-effort: nudge the client to add the exact address + emergency contacts.
+    # Never fail the confirm if email isn't configured or the send errors.
+    if not doc.get("details_completed"):
+        await _maybe_send_details_request_email(doc, user)
+
     return {**doc, "sitter_confirmed": True, "confirmed_at": now, "updated_at": now}
+
+
+async def _maybe_send_details_request_email(form: dict, sitter: dict):
+    api_key = os.environ.get("RESEND_API_KEY", "")
+    recipient = (form.get("client_email") or "").strip().lower()
+    if not api_key or not recipient:
+        return
+    try:
+        sender = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
+        frontend_url = os.environ.get("FRONTEND_URL", "")
+        sitter_name = sitter.get("name", "your house-sitter")
+        html = _build_details_request_email_html(form, frontend_url, sitter_name)
+        params = {
+            "from": f"HomeNest <{sender}>",
+            "to": [recipient],
+            "subject": f"{sitter_name} confirmed — a couple of final details",
+            "html": html,
+        }
+        await asyncio.to_thread(resend.Emails.send, params)
+    except Exception:
+        logger.exception("Details-request email failed (non-fatal)")
 
 
 # ============== Public (client-facing) Endpoints ==============
@@ -592,7 +630,73 @@ async def submit_public_form(share_token: str, body: FormSubmitIn):
     return merged
 
 
+@api.post("/public/forms/{share_token}/details")
+async def submit_public_details(share_token: str, body: FormDetailsIn):
+    """Stage 2: client adds the exact address + emergency contacts, but only
+    after the sitter has confirmed the appointment. No auth required."""
+    doc = await db.get_form_by_share_token(share_token)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Form not found")
+    if not doc.get("sitter_confirmed"):
+        raise HTTPException(status_code=400, detail="These details can be added once your sitter confirms the appointment.")
+    if doc.get("details_completed"):
+        raise HTTPException(status_code=400, detail="These details have already been submitted")
+
+    address = (body.home_address or "").strip()
+    if not address:
+        raise HTTPException(status_code=400, detail="Please provide the home address.")
+    contacts = [c.model_dump() for c in body.emergency_contacts]
+    if not any((c.get("name") or "").strip() and (c.get("phone") or "").strip() for c in contacts):
+        raise HTTPException(status_code=400, detail="Please add at least one emergency contact with a name and phone number.")
+
+    now = datetime.now(timezone.utc).isoformat()
+    patch = {
+        "home_address": address,
+        "emergency_contacts": contacts,
+        "details_completed": True,
+        "details_completed_at": now,
+        "updated_at": now,
+    }
+    await db.update_form_by_share_token(share_token, patch)
+    merged = {**doc, **patch}
+    merged.pop("user_id", None)
+    merged.pop("sitter_email", None)
+    return merged
+
+
 # ============== Email ==============
+def _build_details_request_email_html(form: dict, frontend_url: str, sitter_name: str) -> str:
+    share_url = f"{frontend_url}/share/{form['share_token']}"
+    greeting = f"Hi {form.get('client_name')}," if form.get('client_name') else "Hi,"
+    return f"""
+<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#FAF9F6;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#FAF9F6;padding:32px 16px;font-family:Nunito,Arial,sans-serif">
+  <tr><td align="center">
+    <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:24px;overflow:hidden;box-shadow:0 8px 30px rgba(62,58,55,0.08)">
+      <tr><td style="padding:32px 24px 16px 24px">
+        <div style="font-family:Manrope,Arial,sans-serif;font-weight:800;font-size:24px;color:#3E3A37">HomeNest</div>
+        <div style="color:#76706A;font-size:14px;margin-top:4px">Your sitter confirmed — a couple of final details</div>
+      </td></tr>
+      <tr><td style="padding:8px 24px 0 24px">
+        <h1 style="font-family:Manrope,Arial,sans-serif;font-size:26px;color:#3E3A37;margin:0 0 10px 0;line-height:1.2">{greeting}</h1>
+        <p style="color:#3E3A37;font-size:15px;line-height:1.6;margin:0 0 18px 0">Good news — {sitter_name} confirmed your house-sitting dates. To finish up, please add your exact home address and an emergency contact or two. It only takes a minute.</p>
+      </td></tr>
+      <tr><td style="padding:8px 24px 32px 24px">
+        <a href="{share_url}" style="display:inline-block;background:#8A9A7A;color:#FFFFFF;padding:14px 28px;border-radius:999px;text-decoration:none;font-weight:700;font-family:Manrope,Arial,sans-serif">Add the final details</a>
+        <p style="color:#A39E98;font-size:12px;margin-top:16px;word-break:break-all">Or open this link directly: {share_url}</p>
+      </td></tr>
+      <tr><td style="padding:16px 24px;background:#F4F3ED;color:#76706A;font-size:12px;font-family:Nunito,Arial,sans-serif">
+        Sent with warmth by HomeNest — thoughtful care plans from the house-sitters who love their work.
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>
+"""
+
+
+
 def _build_email_html(form: dict, frontend_url: str, sitter_name: str, personal_note: Optional[str]) -> str:
     share_url = f"{frontend_url}/share/{form['share_token']}"
     note_block = ""
