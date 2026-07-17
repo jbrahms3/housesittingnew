@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Home, Plus, LogOut, Calendar, Copy, Trash2, ExternalLink, FileText, Clock, CheckCircle2, Mail, BadgeDollarSign, User as UserIcon, Share2 } from "lucide-react";
+import { Home, Plus, LogOut, Calendar as CalendarIcon, Copy, Trash2, ExternalLink, FileText, Clock, CheckCircle2, Mail, BadgeDollarSign, User as UserIcon, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
+import { Calendar } from "../components/ui/calendar";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -141,6 +142,8 @@ export default function Dashboard() {
           </Link>
         </div>
 
+        {!loading && forms.length > 0 && <BookingCalendar forms={forms} navigate={navigate} />}
+
         {loading ? (
           <div className="text-[#76706A]">Loading…</div>
         ) : forms.length === 0 ? (
@@ -169,6 +172,139 @@ export default function Dashboard() {
         )}
       </main>
     </div>
+  );
+}
+
+function parseISODate(iso) {
+  if (!iso || typeof iso !== "string") return null;
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}
+
+function toISODate(d) {
+  const tz = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - tz).toISOString().slice(0, 10);
+}
+
+function expandFormDates(form) {
+  const selected = form.selected_dates || [];
+  if (selected.length > 0) return selected.filter((s) => typeof s === "string" && s.length === 10);
+  const start = form.date_start;
+  const end = form.date_end || start;
+  if (!start) return [];
+  const s = parseISODate(start);
+  const e = parseISODate(end);
+  if (!s || !e || e < s) return [];
+  const days = [];
+  for (let cur = new Date(s); cur <= e; cur.setDate(cur.getDate() + 1)) {
+    days.push(toISODate(cur));
+  }
+  return days;
+}
+
+function BookingCalendar({ forms, navigate }) {
+  const [selectedDay, setSelectedDay] = useState(null);
+
+  const bookingsByDate = useMemo(() => {
+    const map = new Map();
+    for (const form of forms) {
+      if (form.status !== "completed") continue;
+      const clientLabel = form.client_name || form.client_email || "A client";
+      for (const iso of expandFormDates(form)) {
+        const existing = map.get(iso);
+        // Prefer a confirmed booking over a merely-submitted one for the same day.
+        if (!existing || (form.sitter_confirmed && !existing.form.sitter_confirmed)) {
+          map.set(iso, { form, clientLabel });
+        }
+      }
+    }
+    return map;
+  }, [forms]);
+
+  const confirmedDates = useMemo(
+    () => [...bookingsByDate.entries()].filter(([, b]) => b.form.sitter_confirmed).map(([iso]) => parseISODate(iso)).filter(Boolean),
+    [bookingsByDate]
+  );
+  const awaitingDates = useMemo(
+    () => [...bookingsByDate.entries()].filter(([, b]) => !b.form.sitter_confirmed).map(([iso]) => parseISODate(iso)).filter(Boolean),
+    [bookingsByDate]
+  );
+  const defaultMonth = confirmedDates[0] || awaitingDates[0] || new Date();
+
+  const selectedBooking = selectedDay ? bookingsByDate.get(toISODate(selectedDay)) : null;
+
+  return (
+    <section className="bg-white rounded-3xl p-6 md:p-8 border border-[#E8E4DF]/60 shadow-[0_4px_20px_rgba(62,58,55,0.04)] mb-10" data-testid="dashboard-calendar">
+      <div className="flex items-center gap-3 mb-1">
+        <div className="w-10 h-10 rounded-2xl bg-[#F0EBE1] flex items-center justify-center">
+          <CalendarIcon className="w-5 h-5 text-[#8A9A7A]" strokeWidth={2.25} />
+        </div>
+        <div>
+          <h2 className="font-heading text-2xl font-bold text-[#3E3A37]">Your calendar</h2>
+          <p className="text-sm text-[#76706A]">Tap a marked day to see who it's booked with.</p>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-col md:flex-row gap-6 items-start">
+        <div className="flex justify-center flex-1">
+          <Calendar
+            mode="single"
+            selected={selectedDay}
+            onSelect={setSelectedDay}
+            defaultMonth={defaultMonth}
+            numberOfMonths={1}
+            modifiers={{ confirmed: confirmedDates, awaiting: awaitingDates }}
+            modifiersClassNames={{
+              confirmed: "!bg-[#8A9A7A] !text-white hover:!bg-[#788769] focus:!bg-[#788769] !rounded-md !opacity-100",
+              awaiting: "!bg-[#F0EBE1] !text-[#C58B71] hover:!bg-[#E3D5CA] !rounded-md !opacity-100 border border-dashed border-[#C58B71]/50",
+            }}
+            className="rounded-2xl border border-[#E8E4DF] bg-[#FAF9F6]/60"
+            data-testid="booking-calendar"
+          />
+        </div>
+
+        <div className="w-full md:w-64 flex-shrink-0 space-y-4">
+          <div className="flex flex-col gap-2 text-sm text-[#76706A]" data-testid="calendar-legend">
+            <span className="inline-flex items-center gap-2">
+              <span className="w-3 h-3 rounded bg-[#8A9A7A]" /> Confirmed booking
+            </span>
+            <span className="inline-flex items-center gap-2">
+              <span className="w-3 h-3 rounded bg-[#F0EBE1] border border-dashed border-[#C58B71]/60" /> Awaiting your confirmation
+            </span>
+          </div>
+
+          {selectedBooking ? (
+            <div className="bg-[#FAF9F6] border border-[#E8E4DF] rounded-2xl p-4" data-testid="calendar-day-detail">
+              <div className="text-xs uppercase tracking-wide text-[#A39E98] font-semibold mb-1">
+                {selectedDay.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+              </div>
+              <div className="font-heading font-bold text-[#3E3A37]">{selectedBooking.clientLabel}</div>
+              <div className="text-sm text-[#76706A] mt-1">
+                {selectedBooking.form.sitter_confirmed ? "Confirmed" : "Awaiting your confirmation"}
+              </div>
+              <button
+                onClick={() => navigate(`/forms/${selectedBooking.form.form_id}`)}
+                className="mt-3 text-sm text-[#8A9A7A] font-semibold hover:underline"
+                data-testid="calendar-day-detail-link"
+              >
+                View care plan →
+              </button>
+            </div>
+          ) : selectedDay ? (
+            <div className="bg-[#FAF9F6] border border-[#E8E4DF] rounded-2xl p-4 text-sm text-[#76706A]" data-testid="calendar-day-empty">
+              Nothing booked on {selectedDay.toLocaleDateString(undefined, { month: "short", day: "numeric" })}.
+            </div>
+          ) : (
+            <div className="text-sm text-[#A39E98]">
+              {bookingsByDate.size === 0
+                ? "No booked days yet — once a client submits a care plan, their dates will show up here."
+                : "Select a marked day to see the details."}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -244,7 +380,7 @@ function FormCard({ form, onDelete, onCopy, navigate }) {
           <>
             {dateLabel && (
               <span className="inline-flex items-center gap-1.5 text-xs bg-[#F0EBE1] text-[#76706A] px-3 py-1.5 rounded-full">
-                <Calendar className="w-3.5 h-3.5" /> {dateLabel}
+                <CalendarIcon className="w-3.5 h-3.5" /> {dateLabel}
               </span>
             )}
             {petCount > 0 && (
