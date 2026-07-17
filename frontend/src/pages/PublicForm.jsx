@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import {
   Home, ArrowLeft, ArrowRight, CheckCircle2, Send, Heart, Printer, ClipboardCheck,
   User, MapPin, Phone, Languages, Award, BadgeCheck, Briefcase, ShieldCheck, Receipt,
-  AlertTriangle,
+  AlertTriangle, Droplets,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, formatApiErrorDetail } from "../lib/api";
@@ -102,6 +102,7 @@ function PublicHeader({ printable }) {
 
 function DetailsFlow({ shareToken, form: initialForm }) {
   const [address, setAddress] = useState(initialForm.home_address || "");
+  const [waterShutoff, setWaterShutoff] = useState(initialForm.water_shutoff || "");
   const [contacts, setContacts] = useState(
     (initialForm.emergency_contacts && initialForm.emergency_contacts.length > 0)
       ? initialForm.emergency_contacts
@@ -112,7 +113,7 @@ function DetailsFlow({ shareToken, form: initialForm }) {
 
   const sitterName = initialForm.sitter_name || initialForm.sitter_profile?.name || "Your sitter";
   const hasEmergency = contacts.some((c) => c.name?.trim() && c.phone?.trim());
-  const canSubmit = !!address.trim() && hasEmergency && !submitting;
+  const canSubmit = !!address.trim() && !!waterShutoff.trim() && hasEmergency && !submitting;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -121,6 +122,7 @@ function DetailsFlow({ shareToken, form: initialForm }) {
       await api.post(`/public/forms/${shareToken}/details`, {
         home_address: address,
         emergency_contacts: contacts,
+        water_shutoff: waterShutoff,
       });
       toast.success("Thank you! Your sitter now has everything.");
       setSubmitted(true);
@@ -158,7 +160,7 @@ function DetailsFlow({ shareToken, form: initialForm }) {
         <StepHeader
           eyebrow="Almost done"
           title={`${sitterName} confirmed 🎉`}
-          subtitle="Now that your dates are locked in, please share the exact address and an emergency contact so your sitter is fully prepared."
+          subtitle="Now that your dates are locked in, please share the exact address, where the water shuts off, and an emergency contact so your sitter is fully prepared."
         />
         <Card testid="details-card">
           <SectionHeader icon={MapPin} title="Home address" />
@@ -179,6 +181,27 @@ function DetailsFlow({ shareToken, form: initialForm }) {
                 data-testid="details-home-address"
               />
               <span className="block text-xs text-[#A39E98] mt-1.5">Where your sitter will be staying — street, city, state, ZIP.</span>
+            </label>
+          </div>
+
+          <SectionHeader icon={Droplets} title="Water shut-off" />
+          <div className="mb-8">
+            <label className="block">
+              <span className="block text-sm font-semibold text-[#3E3A37] mb-2">Water shut-off location *</span>
+              <input
+                type="text"
+                value={waterShutoff}
+                onChange={(e) => setWaterShutoff(e.target.value)}
+                placeholder="e.g. Basement, south wall — labeled 'MAIN'"
+                className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:outline-none focus:ring-4 ${
+                  !waterShutoff.trim()
+                    ? "border-[#C58B71]/60 focus:border-[#C58B71] focus:ring-[#C58B71]/15"
+                    : "border-[#E8E4DF] focus:border-[#8A9A7A] focus:ring-[#8A9A7A]/10"
+                }`}
+                aria-invalid={!waterShutoff.trim() || undefined}
+                data-testid="details-water-shutoff"
+              />
+              <span className="block text-xs text-[#A39E98] mt-1.5">So your sitter can act fast if a pipe or appliance leaks.</span>
             </label>
           </div>
 
@@ -243,7 +266,6 @@ function FillableFlow({ shareToken, form: initialForm }) {
     if (step === 3) return fill.pets.every((p) => p.name?.trim());
     if (step === 6) {
       const hasOwner = !!fill.owner_name?.trim() && !!fill.owner_phone?.trim();
-      const hasWaterShutoff = !!fill.water_shutoff?.trim();
       let hasVet = true;
       if ((fill.pets || []).length > 0) {
         if (fill.same_vet_for_all) {
@@ -252,7 +274,7 @@ function FillableFlow({ shareToken, form: initialForm }) {
           hasVet = fill.pets.every((p) => p.vet?.name?.trim() && p.vet?.phone?.trim());
         }
       }
-      return hasOwner && hasWaterShutoff && hasVet;
+      return hasOwner && hasVet;
     }
     return true;
   };
@@ -266,7 +288,11 @@ function FillableFlow({ shareToken, form: initialForm }) {
     if (!confirmed) return;
     setSubmitting(true);
     try {
-      await api.post(`/public/forms/${shareToken}/submit`, fill);
+      await api.post(`/public/forms/${shareToken}/submit`, {
+        ...fill,
+        // The number input hands back a string (empty when untouched).
+        max_hours_away: String(fill.max_hours_away ?? "").trim() === "" ? null : Number(fill.max_hours_away),
+      });
       // Clear saved progress so a future visit shows the read-only completed view.
       try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
       toast.success("Thank you! Your care plan is saved.");

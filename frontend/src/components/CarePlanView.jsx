@@ -3,7 +3,7 @@ import {
   Utensils, Footprints, CheckCircle2, Phone, User as UserIcon, AlertTriangle,
   Droplets, Scissors, Mail as MailIcon, Trash, Flower2, Sparkles,
   StickyNote, ShieldAlert, Wifi, Users, MapPin, Stethoscope,
-  Shovel, Sparkles as SparklesIcon,
+  Shovel, Sparkles as SparklesIcon, Clock,
 } from "lucide-react";
 
 const PET_ICONS = { dog: Dog, cat: Cat, bird: Bird, fish: Fish, rabbit: Rabbit, reptile: Bug, other: PawPrint };
@@ -51,6 +51,12 @@ export default function CarePlanView({ form }) {
           <Badge color="green">{form.stay_required ? "Overnight stay required" : "Overnight stay optional"}</Badge>
           {form.stay_required && <Badge color="sand">{form.bed_provided ? "Bed provided" : "Bring your own bedding"}</Badge>}
         </div>
+        {Number(form.max_hours_away) > 0 && (
+          <div className="mb-3" data-testid="max-hours-away-block">
+            <SubLabel icon={Clock}>Max time away from the house</SubLabel>
+            <BodyText text={`${form.max_hours_away} ${Number(form.max_hours_away) === 1 ? "hour" : "hours"} at a time`} />
+          </div>
+        )}
         {form.stay_notes && <BodyText text={form.stay_notes} />}
       </Section>
 

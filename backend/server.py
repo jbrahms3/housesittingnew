@@ -19,7 +19,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depend
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from starlette.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
 
 from db import Database
 
@@ -237,6 +237,7 @@ class FormSubmitIn(BaseModel):
     owner_phone: str = ""
     owner_email: str = ""
     emergency_contacts: List[EmergencyContactIn] = []
+    max_hours_away: Optional[float] = None
     water_shutoff: str = ""
     wifi_password: str = ""
     wifi_shared: bool = False
@@ -244,12 +245,21 @@ class FormSubmitIn(BaseModel):
     guests_notes: str = ""
     other_notes: str = ""
 
+    @field_validator("max_hours_away", mode="before")
+    @classmethod
+    def _blank_hours_to_none(cls, v):
+        """The client's number input sends "" when left untouched."""
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        return v
+
 
 class FormDetailsIn(BaseModel):
-    """Stage-2 payload: the exact address + emergency contacts the client
-    provides only after the sitter has confirmed the appointment."""
+    """Stage-2 payload: the sensitive house details the client provides only
+    after the sitter has confirmed the appointment."""
     home_address: str = ""
     emergency_contacts: List[EmergencyContactIn] = []
+    water_shutoff: str = ""
 
 
 class SendEmailIn(BaseModel):
@@ -412,6 +422,7 @@ def _empty_submission() -> dict:
         "emergency_contacts": [],
         "same_vet_for_all": True,
         "vet_shared": None,
+        "max_hours_away": None,
         "water_shutoff": "",
         "wifi_password": "",
         "wifi_shared": False,
@@ -648,11 +659,15 @@ async def submit_public_details(share_token: str, body: FormDetailsIn):
     contacts = [c.model_dump() for c in body.emergency_contacts]
     if not any((c.get("name") or "").strip() and (c.get("phone") or "").strip() for c in contacts):
         raise HTTPException(status_code=400, detail="Please add at least one emergency contact with a name and phone number.")
+    water_shutoff = (body.water_shutoff or "").strip()
+    if not water_shutoff:
+        raise HTTPException(status_code=400, detail="Please tell your sitter where the water shut-off is.")
 
     now = datetime.now(timezone.utc).isoformat()
     patch = {
         "home_address": address,
         "emergency_contacts": contacts,
+        "water_shutoff": water_shutoff,
         "details_completed": True,
         "details_completed_at": now,
         "updated_at": now,

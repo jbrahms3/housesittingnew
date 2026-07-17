@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS forms (
     sitter_confirmed BOOLEAN DEFAULT FALSE,
     zip_code TEXT,
     details_completed BOOLEAN DEFAULT FALSE,
+    max_hours_away DOUBLE PRECISION,
     created_at TEXT,
     updated_at TEXT,
     completed_at TEXT,
@@ -72,6 +73,7 @@ CREATE INDEX IF NOT EXISTS forms_user_id_idx ON forms(user_id);
 ALTER TABLE forms ADD COLUMN IF NOT EXISTS zip_code TEXT;
 ALTER TABLE forms ADD COLUMN IF NOT EXISTS details_completed BOOLEAN DEFAULT FALSE;
 ALTER TABLE forms ADD COLUMN IF NOT EXISTS details_completed_at TEXT;
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS max_hours_away DOUBLE PRECISION;
 """
 
 USER_COLUMNS = [
@@ -87,7 +89,7 @@ FORM_COLUMNS = [
     "water_shutoff", "wifi_password", "guests_notes", "other_notes",
     "stay_required", "bed_provided", "same_vet_for_all", "wifi_shared",
     "guests_allowed", "sitter_confirmed", "zip_code", "details_completed",
-    "created_at", "updated_at", "completed_at", "confirmed_at",
+    "max_hours_away", "created_at", "updated_at", "completed_at", "confirmed_at",
     "details_completed_at", "selected_dates", "pets", "tasks",
     "emergency_contacts", "vet_shared",
 ]

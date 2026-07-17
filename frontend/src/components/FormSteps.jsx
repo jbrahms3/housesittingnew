@@ -4,7 +4,7 @@ import {
   Dog, Cat, Bird, Fish, Rabbit, Bug, PawPrint, Check, Plus, Minus, X,
   Droplets, Scissors, Mail as MailIcon, Trash, Flower2, Sparkles,
   Utensils, Footprints, Calendar as CalIcon, User as UserIcon, AlertTriangle, Wifi, Stethoscope, Users,
-  Shovel, Sparkles as SparklesIcon,
+  Shovel, Sparkles as SparklesIcon, Clock,
 } from "lucide-react";export const PET_OPTIONS = [
   { type: "dog", label: "Dog", icon: Dog },
   { type: "cat", label: "Cat", icon: Cat },
@@ -47,6 +47,7 @@ export function emptySubmission() {
     emergency_contacts: [],
     same_vet_for_all: true,
     vet_shared: { name: "", phone: "", address: "", notes: "" },
+    max_hours_away: "",
     water_shutoff: "",
     wifi_password: "",
     wifi_shared: false,
@@ -819,24 +820,31 @@ export function StepContacts({ form, update, pricing }) {
           </>
         )}
 
-        <SectionHeader icon={Droplets} title="House essentials" />
-        <div className="mb-4">
-          <label className="block text-sm font-semibold text-[#3E3A37] mb-2">Water shut-off location *</label>
-          <input
-            type="text"
-            value={form.water_shutoff}
-            onChange={(e) => update({ water_shutoff: e.target.value })}
-            placeholder="e.g. Basement, south wall — labeled 'MAIN'"
-            className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:outline-none focus:ring-4 ${
-              !form.water_shutoff?.trim()
-                ? "border-[#C58B71]/60 focus:border-[#C58B71] focus:ring-[#C58B71]/15"
-                : "border-[#E8E4DF] focus:border-[#8A9A7A] focus:ring-[#8A9A7A]/10"
-            }`}
-            required
-            aria-invalid={!form.water_shutoff?.trim() || undefined}
-            data-testid="water-shutoff"
-          />
+        <SectionHeader icon={Clock} title="Time away from the house" />
+        <div className="mb-8">
+          <label className="block text-sm font-semibold text-[#3E3A37] mb-2">
+            How long can your sitter be away from the house at a time?
+          </label>
+          <div className="flex items-center gap-3">
+            <input
+              type="number"
+              min={0}
+              max={72}
+              step={0.5}
+              value={form.max_hours_away ?? ""}
+              onChange={(e) => update({ max_hours_away: e.target.value })}
+              placeholder="4"
+              className="w-32 bg-white border-2 border-[#E8E4DF] rounded-xl px-4 py-3 focus:outline-none focus:border-[#8A9A7A] focus:ring-4 focus:ring-[#8A9A7A]/10"
+              data-testid="max-hours-away"
+            />
+            <span className="text-[#76706A] font-medium">hours at a time</span>
+          </div>
+          <span className="block text-xs text-[#A39E98] mt-1.5">
+            E.g. 4 — your sitter can run errands, but shouldn't leave the house unattended for longer than this.
+          </span>
         </div>
+
+        <SectionHeader icon={Droplets} title="House essentials" />
         <div className="mb-4">
           <label className="block text-sm font-semibold text-[#3E3A37] mb-2">Wi-Fi (optional)</label>
           {wifiDiscount && (
